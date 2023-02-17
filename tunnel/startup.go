@@ -70,30 +70,28 @@ func startupOne(tun *tunnel) {
 		return
 	}
 	uuid := base64.URLEncoding.EncodeToString(bs)
-
-	switch tun.listenOn {
-	case listenOnLocal:
-		listenLocal(uuid, tun.listenAt, tun.forwardTo, tun.sshConfig)
-	case listenOnRemote:
-		listenRemote(uuid, tun.listenAt, tun.forwardTo, tun.sshConfig)
-	default:
-	}
+	forwarding(tun.listenOn, uuid, tun.listenAt, tun.forwardTo, tun.sshConfig)
 }
 
-func shutdownHook(destroy chan struct{}) {
-	for {
-		time.Sleep(1 * time.Second)
-		if shutdown {
-			destroy <- struct{}{}
-			break
-		}
+func forwarding(listenOn listenType, uuid, listenAt, forwardTo string, sshConfig *sshConfig) {
+	if listenOn != listenOnLocal &&
+		listenOn != listenOnRemote {
+		return
 	}
-}
+	tp := mapListenType(listenOn)
 
-func listenLocal(uuid, listenAt, forwardTo string, sshConfig *sshConfig) {
-	transport := func(local net.Conn, sshClient *ssh.Client) {
+	transport := func(src net.Conn, sshClient *ssh.Client) {
+		var (
+			dst net.Conn
+			err error
+		)
 		log.Infof("[%s] target dial: %s", uuid, forwardTo)
-		target, err := sshClient.Dial("tcp", forwardTo)
+		switch listenOn {
+		case listenOnLocal:
+			dst, err = sshClient.Dial("tcp", forwardTo)
+		case listenOnRemote:
+			dst, err = net.Dial("tcp", forwardTo)
+		}
 		if err != nil {
 			log.Errorf("[%s] target dial, err: %s", uuid, err.Error())
 			return
@@ -101,93 +99,58 @@ func listenLocal(uuid, listenAt, forwardTo string, sshConfig *sshConfig) {
 
 		wait := &sync.WaitGroup{}
 		wait.Add(2)
-		go exchangeFlow(uuid, target, local, wait, true)
-		go exchangeFlow(uuid, local, target, wait, false)
+		go exchangeFlow(uuid, dst, src, wait, true)
+		go exchangeFlow(uuid, src, dst, wait, false)
 		wait.Wait()
 	}
 
 	for !shutdown {
-		log.Infof("[%s] forwarding - local, alias: %s, ssh addr: %s", uuid, sshConfig.alias, sshConfig.address)
+		log.Infof("[%s] forwarding - %s, alias: %s, ssh addr: %s",
+			uuid, tp, sshConfig.alias, sshConfig.address)
 		sshClient, err := ssh.Dial("tcp", sshConfig.address, sshConfig.config)
 		if err != nil {
 			log.Errorf("[%s] ssh dial, err: %s", uuid, err.Error())
-			return
+			continue
 		}
 
-		log.Infof("[%s] listen local, addr: '%s'", uuid, listenAt)
-		listener, err := net.Listen("tcp", listenAt)
+		log.Infof("[%s] listen %s, addr: '%s'", uuid, tp, listenAt)
+		var listener net.Listener
+		switch listenOn {
+		case listenOnLocal:
+			listener, err = net.Listen("tcp", listenAt)
+		case listenOnRemote:
+			listener, err = sshClient.Listen("tcp", listenAt)
+		}
 		if err != nil {
-			log.Errorf("[%s] listen local, err: %s", uuid, err.Error())
+			log.Errorf("[%s] listen %s, err: %s", uuid, tp, err.Error())
 			continue
 		}
 
 		destroy := make(chan struct{}, 1)
-		go shutdownHook(destroy)
+		hook := true
+		go func() {
+			for hook {
+				time.Sleep(1 * time.Second)
+				if shutdown {
+					destroy <- struct{}{}
+					break
+				}
+			}
+		}()
 		go func() {
 			for {
 				conn, e := listener.Accept()
 				if e != nil {
-					log.Warnf("[%s] local accept, err: %s", uuid, e.Error())
+					log.Warnf("[%s] %s accept, err: %s", uuid, tp, e.Error())
 					destroy <- struct{}{}
 					break
 				}
-				log.Infof("[%s] local accept: '%s'", uuid, conn.RemoteAddr().String())
+				log.Infof("[%s] %s accept: '%s'", uuid, tp, conn.RemoteAddr().String())
 				go transport(conn, sshClient)
 			}
 		}()
 		<-destroy
-
-		_ = listener.Close()
-		_ = sshClient.Close()
-	}
-}
-
-func listenRemote(uuid, listenAt, forwardTo string, sshConfig *sshConfig) {
-	transport := func(remote net.Conn) {
-		target, err := net.Dial("tcp", forwardTo)
-		if err != nil {
-			log.Errorf("[%s] target dial, err: %s", uuid, err.Error())
-			return
-		}
-		log.Infof("[%s] target dial: '%s'", uuid, target.RemoteAddr().String())
-
-		wait := &sync.WaitGroup{}
-		wait.Add(2)
-		go exchangeFlow(uuid, target, remote, wait, true)
-		go exchangeFlow(uuid, remote, target, wait, false)
-		wait.Wait()
-	}
-
-	for !shutdown {
-		log.Infof("[%s] forwarding - remote, alias: %s, ssh addr: %s", uuid, sshConfig.alias, sshConfig.address)
-		sshClient, err := ssh.Dial("tcp", sshConfig.address, sshConfig.config)
-		if err != nil {
-			log.Errorf("[%s] ssh dial, err: %s", uuid, err.Error())
-			continue
-		}
-
-		log.Infof("[%s] listen remote, addr: '%s'", uuid, listenAt)
-		listener, err := sshClient.Listen("tcp", listenAt)
-		if err != nil {
-			log.Errorf("[%s] listen remote, err: %s", uuid, err.Error())
-			continue
-		}
-
-		destroy := make(chan struct{}, 1)
-		go shutdownHook(destroy)
-		go func() {
-			for {
-				conn, e := listener.Accept()
-				if e != nil {
-					log.Warnf("[%s] remote accept, err: %s", uuid, e.Error())
-					destroy <- struct{}{}
-					break
-				}
-				log.Infof("[%s] remote accept: '%s'", uuid, conn.RemoteAddr().String())
-				go transport(conn)
-			}
-		}()
-		<-destroy
+		hook = false
 
 		_ = listener.Close()
 		_ = sshClient.Close()

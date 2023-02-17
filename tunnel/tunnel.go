@@ -47,6 +47,19 @@ func getListenType(s string) listenType {
 	}
 }
 
+func mapListenType(tp listenType) string {
+	switch tp {
+	case listenUnknown:
+		return "unknown"
+	case listenOnLocal:
+		return "local"
+	case listenOnRemote:
+		return "remote"
+	default:
+		return ""
+	}
+}
+
 type tunnel struct {
 	listenOn  listenType
 	listenAt  string
