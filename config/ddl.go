@@ -6,6 +6,7 @@ type configuration struct {
 }
 
 type Tunnel struct {
+	Service   string `json:"service"`
 	ListenOn  string `json:"listenOn"`
 	ListenAt  string `json:"listenAt"`
 	SshAlias  string `json:"sshAlias"`

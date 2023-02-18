@@ -8,6 +8,7 @@
 {
   "tunnel": [
     {
+      "service": "service",
       "listenOn": "remote",
       "listenAt": "0.0.0.0:8080",
       "sshAlias": "ssh-alias",

@@ -61,6 +61,7 @@ func mapListenType(tp listenType) string {
 }
 
 type tunnel struct {
+	service   string
 	listenOn  listenType
 	listenAt  string
 	forwardTo string
@@ -85,6 +86,7 @@ func tunnels(conf []*config.Tunnel, sshConfMap map[string]*sshConfig) (tun []*tu
 		}
 
 		tunnel := &tunnel{
+			service:   c.Service,
 			listenOn:  listenOn,
 			listenAt:  c.ListenAt,
 			forwardTo: c.ForwardTo,

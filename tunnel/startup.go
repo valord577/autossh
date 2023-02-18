@@ -70,6 +70,9 @@ func startupOne(tun *tunnel) {
 		return
 	}
 	uuid := base64.URLEncoding.EncodeToString(bs)
+
+	log.Infof("[%s] start the tunnel service: '%s'", uuid, tun.service)
+	uuid = uuid + "(" + tun.service + ")"
 	forwarding(tun.listenOn, uuid, tun.listenAt, tun.forwardTo, tun.sshConfig)
 }
 
@@ -85,7 +88,6 @@ func forwarding(listenOn listenType, uuid, listenAt, forwardTo string, sshConfig
 			dst net.Conn
 			err error
 		)
-		log.Infof("[%s] target dial: %s", uuid, forwardTo)
 		switch listenOn {
 		case listenOnLocal:
 			dst, err = sshClient.Dial("tcp", forwardTo)
