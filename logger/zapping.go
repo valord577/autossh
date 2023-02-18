@@ -23,7 +23,7 @@ func isDebug() bool {
 func tmfmt() string {
 	env := os.Getenv(autosshLogsTimeFormat)
 	if len(env) < 1 {
-		env = "2006-01-02 15:04:05.999 -07:00"
+		env = "2006-01-02 15:04:05.000 -07:00"
 	}
 	return env
 }
