@@ -55,7 +55,7 @@ type sshConfig struct {
 	config  *ssh.ClientConfig
 }
 
-func sshConfMap(conf []*config.SshConfig) map[string]*sshConfig {
+func SshConfMap(conf []*config.SshConfig) map[string]*sshConfig {
 	m := make(map[string]*sshConfig)
 
 	for _, c := range conf {

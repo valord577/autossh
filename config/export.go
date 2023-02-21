@@ -15,7 +15,16 @@ func SshConf() []*SshConfig {
 
 var c configuration
 
-func ReadInFile(file string) error {
+const (
+	autosshConfigPath = "AUTOSSH_CONFIG_PATH"
+)
+
+func ReadInFile() error {
+	fp := os.Getenv(autosshConfigPath)
+	return readInFile(fp)
+}
+
+func readInFile(file string) error {
 	bs, err := os.ReadFile(file)
 	if err != nil {
 		return err

@@ -6,10 +6,8 @@ import (
 	"errors"
 	"net"
 	"os"
-	"os/signal"
 	"strconv"
 	"sync"
-	"syscall"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -30,35 +28,31 @@ func flowBuffSize() int {
 	return int(size)
 }
 
-var (
-	shutdown = false
+type TunServ struct {
+	shutdown  bool
+	waitgroup sync.WaitGroup
+}
 
-	wg sync.WaitGroup
-)
+func (s *TunServ) Shutdown() {
+	s.shutdown = true
+	s.waitgroup.Wait()
+}
 
-func startup(tunnels []*tunnel) error {
+func (s *TunServ) Startup(tunnels []*tunnel) error {
 	l := len(tunnels)
 	if l < 1 {
 		return errors.New("all tunnels don't need to be opened")
 	}
 
-	wg.Add(l)
+	s.waitgroup.Add(l)
 	for _, tunnel := range tunnels {
-		go startupOne(tunnel)
+		go s.startupOne(tunnel)
 	}
-	// block and listen for signals
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
-	s := <-sig
-	log.Infof("recv signal: %d", s)
-
-	shutdown = true
-	wg.Wait()
 	return nil
 }
 
-func startupOne(tun *tunnel) {
-	defer wg.Done()
+func (s *TunServ) startupOne(tun *tunnel) {
+	defer s.waitgroup.Done()
 	if tun == nil {
 		return
 	}
@@ -73,10 +67,10 @@ func startupOne(tun *tunnel) {
 
 	log.Infof("[%s] start the tunnel service: '%s'", uuid, tun.service)
 	uuid = uuid + "(" + tun.service + ")"
-	forwarding(tun.listenOn, uuid, tun.listenAt, tun.forwardTo, tun.sshConfig)
+	s.forwarding(tun.listenOn, uuid, tun.listenAt, tun.forwardTo, tun.sshConfig)
 }
 
-func forwarding(listenOn listenType, uuid, listenAt, forwardTo string, sshConfig *sshConfig) {
+func (s *TunServ) forwarding(listenOn listenType, uuid, listenAt, forwardTo string, sshConfig *sshConfig) {
 	if listenOn != listenOnLocal &&
 		listenOn != listenOnRemote {
 		return
@@ -101,12 +95,12 @@ func forwarding(listenOn listenType, uuid, listenAt, forwardTo string, sshConfig
 
 		wait := &sync.WaitGroup{}
 		wait.Add(2)
-		go exchangeFlow(uuid, dst, src, wait, true)
-		go exchangeFlow(uuid, src, dst, wait, false)
+		go s.exchangeFlow(uuid, dst, src, wait, true)
+		go s.exchangeFlow(uuid, src, dst, wait, false)
 		wait.Wait()
 	}
 
-	for !shutdown {
+	for !s.shutdown {
 		log.Infof("[%s] forwarding - %s, alias: %s, ssh addr: %s",
 			uuid, tp, sshConfig.alias, sshConfig.address)
 		sshClient, err := ssh.Dial("tcp", sshConfig.address, sshConfig.config)
@@ -133,7 +127,7 @@ func forwarding(listenOn listenType, uuid, listenAt, forwardTo string, sshConfig
 		go func() {
 			for hook {
 				time.Sleep(1 * time.Second)
-				if shutdown {
+				if s.shutdown {
 					destroy <- struct{}{}
 					break
 				}
@@ -159,7 +153,7 @@ func forwarding(listenOn listenType, uuid, listenAt, forwardTo string, sshConfig
 	}
 }
 
-func exchangeFlow(uuid string, dst, src net.Conn, wait *sync.WaitGroup, logs bool) {
+func (s *TunServ) exchangeFlow(uuid string, dst, src net.Conn, wait *sync.WaitGroup, logs bool) {
 	defer func() {
 		_ = dst.Close()
 		_ = src.Close()
@@ -172,7 +166,7 @@ func exchangeFlow(uuid string, dst, src net.Conn, wait *sync.WaitGroup, logs boo
 
 		srcAddr = src.RemoteAddr().String()
 	)
-	for !shutdown {
+	for !s.shutdown {
 		nr, er := src.Read(buf)
 		if er != nil {
 			err = er

@@ -1,31 +1,8 @@
 package tunnel
 
 import (
-	"errors"
-	"os"
-
 	"autossh/config"
 )
-
-const (
-	autosshConfigPath = "AUTOSSH_CONFIG_PATH"
-)
-
-func Execute() (err error) {
-	conf := os.Getenv(autosshConfigPath)
-	if err = config.ReadInFile(conf); err != nil {
-		return
-	}
-	sshConfMap := sshConfMap(config.SshConf())
-	if len(sshConfMap) < 1 {
-		return errors.New("empty ssh config")
-	}
-	tunnels := tunnels(config.Tunnels(), sshConfMap)
-	if len(tunnels) < 1 {
-		return errors.New("empty ssh tunnels")
-	}
-	return startup(tunnels)
-}
 
 type listenType int
 
@@ -68,7 +45,7 @@ type tunnel struct {
 	sshConfig *sshConfig
 }
 
-func tunnels(conf []*config.Tunnel, sshConfMap map[string]*sshConfig) (tun []*tunnel) {
+func Tunnels(conf []*config.Tunnel, sshConfMap map[string]*sshConfig) (tun []*tunnel) {
 	l := len(conf)
 	if l < 1 {
 		return
