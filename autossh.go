@@ -5,9 +5,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"autossh/component"
 	"autossh/config"
-	log "autossh/logger"
+	"autossh/logs"
+	"autossh/tunnel2"
 	"autossh/version"
 )
 
@@ -16,37 +16,29 @@ const (
 	EXIT_FAILURE = 1
 )
 
-var logger = &component.Zap{}
-
 func main() {
 	exitCode := EXIT_SUCCESS
-	defer os.Exit(exitCode)
-
-	_ = component.Use(logger)
 	defer func() {
-		_ = component.Free(logger)
+		os.Exit(exitCode)
 	}()
-	log.Infof("%s", version.String())
+	logs.Infof("%s", version.String())
 
 	if err := config.ReadInFile(); err != nil {
 		exitCode = EXIT_FAILURE
-		log.Errorf("%s", err.Error())
+		logs.Errorf("%s", err.Error())
 		return
 	}
 
-	tun := &component.Tun{}
-	if err := component.Use(tun); err != nil {
+	if err := tunnel2.Startup(); err != nil {
 		exitCode = EXIT_FAILURE
-		log.Errorf("%s", err.Error())
+		logs.Errorf("%s", err.Error())
 		return
 	}
-	defer func() {
-		_ = component.Free(tun)
-	}()
+	defer tunnel2.Shutdown()
 
 	// block and listen for signals
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
 	s := <-sig
-	log.Infof("recv signal: %d", s)
+	logs.Infof("recv signal: %s", s.String())
 }
