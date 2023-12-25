@@ -1,7 +1,0 @@
-{
-    "go.toolsEnvVars": {},
-    "go.delveConfig": {},
-    "gopls": {
-        "formatting.local": "autossh"
-    }
-}
